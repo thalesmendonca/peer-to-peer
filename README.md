@@ -1,0 +1,1 @@
+Uma aplicação que permite a conexão peer-to-peer e troca de arquivos de áudio entre clientes.
