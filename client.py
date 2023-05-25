@@ -2,7 +2,7 @@ import socket
 import sys
 
 
-class Client():
+class Client:
 
     def __init__(self):
         self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -17,7 +17,7 @@ class Client():
             print("Conectado ao servidor...")
 
         except:
-            print("Erro ao conectar-se ao servidor...")
+            raise Exception("Erro ao conectar-se ao servidor...")
 
     def receive_packages(self):
         try:
@@ -25,21 +25,35 @@ class Client():
             print(f"Mensagem do servidor: {package}")
 
         except:
-            print("Erro ao receber mensagem...")
+            raise Exception("Erro ao receber mensagem...")
 
     def send_packages(self, package):
-        self.client_socket.send(package)
+        try:
+            encoded_package = package.encode(self.encode_format)
+            if package == "lista":
+                self.client_socket.send(encoded_package)
+                self.receive_packages()
+            else:
+                self.client_socket.send(encoded_package)
+        except:
+            raise Exception("Erro ao enviar mensagem ao servidor.")
 
     def disconnect(self):
-        self.client_socket.send("disconnect".encode())
+        self.client_socket.send("disconnect".encode(self.encode_format))
         self.client_socket.close()
 
     def main(self):
-        self.connect_to_server()
-        encoded_files_list = ",".join(self.files_list).encode(self.encode_format)
-        self.send_packages(encoded_files_list)
-
-        #self.disconnect()
+        try:
+            self.connect_to_server()
+            self.send_packages(",".join(self.files_list))
+            while True:
+                message = input()
+                if message == "disconnect":
+                    self.disconnect()
+                    break
+                self.send_packages(message)
+        except Exception as err:
+            print(f"A aplicação do cliente foi interrompida: {err}")
 
 
 Client().main()
