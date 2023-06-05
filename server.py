@@ -44,14 +44,15 @@ class Server:
             connection, address = self.server_socket.accept()
 
             print(f"Nova conexão: {address[0]}:{address[1]}")
-            data = connection.recv(1024).decode(self.encode_format)
+            
             if address in client_table:
                 print(f"Cliente já cadastrado: {address[0]}:{address[1]}")
-            else:
-                client_table[address] = data.split(",")
-                print(f"Tabela de clientes atualizada: {client_table}")
-
+                continue
+            
+            data = connection.recv(1024).decode(self.encode_format)
+            client_table[address] = data.split(",")
             threading.Thread(target=self.handle_client, args=(connection, address), daemon=True).start()
+            print(f"Tabela de clientes atualizada: {client_table}")
 
     def main(self):
         self.run_server()
