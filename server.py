@@ -35,6 +35,7 @@ class Server:
                 if data == "disconnect":
                     client_table.pop(address, None)
                     self.connections.remove(connection)
+                    connection.send(str(["desconectado"]).encode(self.encode_format))
                     connection.close()
                     print(f"Cliente desconectado: {address[0]}:{address[1]}")
                     self.broadcast(str(["lista", client_table]))

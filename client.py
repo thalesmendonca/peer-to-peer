@@ -28,6 +28,8 @@ class Client:
                 if data[0] == "lista":
                     client_table = data[1]
                     print(f"Nova tabela de clientes: {client_table}")
+                elif data[0] == "desconectado":
+                    break
             except:
                 print("Erro ao lidar com a listen to server")
                 break
@@ -50,7 +52,6 @@ class Client:
 
     def disconnect(self):
         self.client_socket.send("disconnect".encode(self.encode_format))
-        self.client_socket.close()
 
     def main(self):
         try:
