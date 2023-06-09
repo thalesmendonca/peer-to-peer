@@ -1,6 +1,8 @@
 import socket
 import sys
 
+client_table = {}
+
 
 class Client:
 
@@ -23,7 +25,7 @@ class Client:
         try:
             package = self.client_socket.recv(1024).decode(self.encode_format)
             print(f"Mensagem do servidor: {package}")
-
+            return package
         except:
             raise Exception("Erro ao receber mensagem...")
 
@@ -32,7 +34,7 @@ class Client:
             encoded_package = package.encode(self.encode_format)
             if package == "lista":
                 self.client_socket.send(encoded_package)
-                self.receive_packages()
+                return self.receive_packages()
             else:
                 self.client_socket.send(encoded_package)
         except:
@@ -51,6 +53,10 @@ class Client:
                 if message == "disconnect":
                     self.disconnect()
                     break
+                if message == "lista":
+                    client_table = self.send_packages(message)
+                    print(f"Lista de usuários: {client_table}")
+                    continue
                 self.send_packages(message)
         except Exception as err:
             print(f"A aplicação do cliente foi interrompida: {err}")
