@@ -1,5 +1,7 @@
 import socket
 import sys
+import threading
+import ast
 
 client_table = {}
 
@@ -12,31 +14,37 @@ class Client:
         self.server_ip = sys.argv[1]
         self.server_port = int(sys.argv[2])
         self.files_list = sys.argv[3:] if len(sys.argv) > 2 else []
+        self.listen_thread = threading.Thread
+
+    def listen_to_server(self):
+        while True:
+            try:
+                data = self.client_socket.recv(1024).decode(self.encode_format)
+                data = ast.literal_eval(data)
+                if not data:
+                    break
+
+                print(f"Mensagem do servidor: {data}")
+                if data[0] == "lista":
+                    client_table = data[1]
+                    print(f"Nova tabela de clientes: {client_table}")
+            except:
+                print("Erro ao lidar com a listen to server")
+                break
 
     def connect_to_server(self):
         try:
             self.client_socket.connect((self.server_ip, self.server_port))
+            self.listen_thread(target=self.listen_to_server, daemon=True).start()
             print("Conectado ao servidor...")
 
         except:
             raise Exception("Erro ao conectar-se ao servidor...")
 
-    def receive_packages(self):
-        try:
-            package = self.client_socket.recv(1024).decode(self.encode_format)
-            print(f"Mensagem do servidor: {package}")
-            return package
-        except:
-            raise Exception("Erro ao receber mensagem...")
-
     def send_packages(self, package):
         try:
             encoded_package = package.encode(self.encode_format)
-            if package == "lista":
-                self.client_socket.send(encoded_package)
-                return self.receive_packages()
-            else:
-                self.client_socket.send(encoded_package)
+            self.client_socket.send(encoded_package)
         except:
             raise Exception("Erro ao enviar mensagem ao servidor.")
 
@@ -53,10 +61,6 @@ class Client:
                 if message == "disconnect":
                     self.disconnect()
                     break
-                if message == "lista":
-                    client_table = self.send_packages(message)
-                    print(f"Lista de usuários: {client_table}")
-                    continue
                 self.send_packages(message)
         except Exception as err:
             print(f"A aplicação do cliente foi interrompida: {err}")

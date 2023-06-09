@@ -10,6 +10,7 @@ class Server:
         self.encode_format = "utf-8"
         self.server_ip = sys.argv[1]
         self.server_port = int(sys.argv[2])
+        self.connections = []
         try:
             self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.server_socket.bind((self.server_ip, self.server_port))
@@ -20,6 +21,10 @@ class Server:
             print("Falha ao iniciar servidor...")
             sys.exit(1)
 
+    def broadcast(self, message):
+        for connection in self.connections:
+            connection.send(message.encode(self.encode_format))
+
     def handle_client(self, connection, address):
         while True:
             try:
@@ -29,12 +34,14 @@ class Server:
 
                 if data == "disconnect":
                     client_table.pop(address, None)
+                    self.connections.remove(connection)
                     connection.close()
                     print(f"Cliente desconectado: {address[0]}:{address[1]}")
+                    self.broadcast(str(["lista", client_table]))
                     break
 
                 if data == "lista":
-                    connection.send(str(client_table).encode(self.encode_format))
+                    connection.send(str(["lista", client_table]).encode(self.encode_format))
 
             except:
                 print(f"Erro ao lidar com o usuário:{address}")
@@ -50,7 +57,9 @@ class Server:
                 connection.close()
                 continue
 
+            self.connections.append(connection)
             client_table[address] = data.split(",")
+            self.broadcast(str(["lista", client_table]))
             threading.Thread(target=self.handle_client, args=(connection, address), daemon=True).start()
             print(f"Tabela de clientes atualizada: {client_table}")
 
