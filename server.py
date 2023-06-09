@@ -46,6 +46,7 @@ class Server:
 
             except:
                 print(f"Erro ao lidar com o usuário:{address}")
+                break
 
     def run_server(self):
         while True:
