@@ -1,6 +1,7 @@
 import socket
 import sys
 import threading
+import ast
 
 client_table = {}
 
@@ -29,10 +30,11 @@ class Server:
         while True:
             try:
                 data = connection.recv(1024).decode(self.encode_format)
+                data = ast.literal_eval(data)
                 if not data:
                     break
 
-                if data == "disconnect":
+                if data[0] == "disconnect":
                     client_table.pop(address, None)
                     self.connections.remove(connection)
                     connection.send(str(["desconectado"]).encode(self.encode_format))
@@ -40,9 +42,12 @@ class Server:
                     print(f"Cliente desconectado: {address[0]}:{address[1]}")
                     self.broadcast(str(["lista", client_table]))
                     break
-
-                if data == "lista":
+                elif data[0] == "lista":
                     connection.send(str(["lista", client_table]).encode(self.encode_format))
+                elif data[0] == "peer":
+                    print(f"O Cliente {connection.getpeername()} quer conexão com cliente"
+                          f"{data[1]}, na porta {data[2]}, pra receber o arquivo {data[3]}")
+
 
             except:
                 print(f"Erro ao lidar com o usuário:{address}")

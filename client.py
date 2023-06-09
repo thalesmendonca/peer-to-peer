@@ -45,13 +45,13 @@ class Client:
 
     def send_packages(self, package):
         try:
-            encoded_package = package.encode(self.encode_format)
+            encoded_package = str(package).encode(self.encode_format)
             self.client_socket.send(encoded_package)
         except:
             raise Exception("Erro ao enviar mensagem ao servidor.")
 
     def disconnect(self):
-        self.client_socket.send("disconnect".encode(self.encode_format))
+        self.client_socket.send(str(["disconnect"]).encode(self.encode_format))
 
     def main(self):
         try:
@@ -59,7 +59,8 @@ class Client:
             self.send_packages(",".join(self.files_list))
             while True:
                 message = input()
-                if message == "disconnect":
+                data = ast.literal_eval(message)
+                if data[0] == "disconnect":
                     self.disconnect()
                     break
                 self.send_packages(message)
