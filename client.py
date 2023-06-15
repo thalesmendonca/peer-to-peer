@@ -3,8 +3,6 @@ import sys
 import threading
 import ast
 
-client_table = {}
-
 
 class Client:
 
@@ -15,21 +13,22 @@ class Client:
         self.server_port = int(sys.argv[2])
         self.files_list = sys.argv[3:] if len(sys.argv) > 2 else []
         self.listen_thread = threading.Thread
+        self.client_table = {}
 
     def listen_to_server(self):
         while True:
             try:
                 data = self.client_socket.recv(1024).decode(self.encode_format)
                 data = ast.literal_eval(data)
-                if not data:
+                if not data or data[0] == "desconectado":
                     break
 
-                print(f"Mensagem do servidor: {data}")
                 if data[0] == "lista":
-                    client_table = data[1]
-                    print(f"Nova tabela de clientes: {client_table}")
-                elif data[0] == "desconectado":
-                    break
+                    self.client_table = data[1]
+                    print(f"Nova tabela de clientes: {self.client_table}")
+                elif data[0] == "peer":
+                    print("Tem gente querendo conexão com você")
+
             except:
                 print("Erro ao lidar com a listen to server")
                 break
@@ -58,12 +57,46 @@ class Client:
             self.connect_to_server()
             self.send_packages(",".join(self.files_list))
             while True:
-                message = input()
-                data = ast.literal_eval(message)
-                if data[0] == "disconnect":
+                choice = input(
+                    "\nO que deseja fazer?\n"
+                    "1 - desconectar\n"
+                    "2 - solicitar lista\n"
+                    "3 - solicitar arquivo a um cliente\n"
+                )
+
+                if choice == "1":
                     self.disconnect()
                     break
-                self.send_packages(message)
+                elif choice == "2":
+                    self.send_packages(["lista"])
+                elif choice == "3":
+                    print("\nDeseja solicitar um arquivo a qual cliente?\n")
+                    clients_keys = list(self.client_table.keys())
+                    for i, cliente in enumerate(self.client_table.keys()):
+                        print(f"{i} - {cliente}")
+
+                    client_to_connect = int(input())
+                    if client_to_connect < 0 or client_to_connect >= len(clients_keys):
+                        print("Não existe esse cliente na lista.\nIgnorando solicitação...")
+                    else:
+                        client_to_connect = {
+                            clients_keys[client_to_connect]:
+                                self.client_table[clients_keys[client_to_connect]]
+                        }
+                        print("\nQual arquivo deseja receber?\n")
+                        client_keys = list(client_to_connect.keys())
+                        client_files = client_to_connect[client_keys[0]]
+                        for i, file in enumerate(client_files):
+                            print(f"{i} - {file}")
+                        file_to_receive = int(input())
+                        if file_to_receive < 0 or file_to_receive >= len(client_files):
+                            print("Não existe esse arquivo na lista.\nIgnorando solicitação...")
+                        else:
+                            client_addr = client_keys[0]
+                            file_to_receive = client_files[file_to_receive]
+                            port_to_receive = input("\nEspecifique a porta que deseja receber o arquivo.\n")
+                            self.send_packages(["peer", client_addr, port_to_receive, file_to_receive])
+
         except Exception as err:
             print(f"A aplicação do cliente foi interrompida: {err}")
 
