@@ -80,9 +80,6 @@ class Client:
                     connection.send(str(["desconectado"]).encode(self.encode_format))
                     connection.close()
                     break
-                elif data[0] == "arquivo":
-                    #Mandar minha lista de arquivos para ser escolhido pelo peer
-                    connection.send(str(["lista", self.files_list]).encode(self.encode_format))
                 elif re.search("[0-9]", data[0]) != None:
                     chosenFile = data[0]
                     if chosenFile > 0 and chosenFile < len(self.files_list):
@@ -131,6 +128,11 @@ class Client:
                                 self.client_table[clients_keys[client_to_connect]]
                         }
                         self.client_socket.connect((clients_keys[0][0], clients_keys[0][1]))
+                        #Pedindo arquivo
+                        file_number = input("Qual arquivo pedir?")
+                        self.client_socket.send(str(file_number).encode(self.encode_format))
+
+
                         # print("\nQual arquivo deseja receber?\n")
                         # client_keys = list(client_to_connect.keys())
                         # client_files = client_to_connect[client_keys[0]]
