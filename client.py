@@ -56,7 +56,9 @@ class Client:
         self.client_socket.send(str(["disconnect"]).encode(self.encode_format))
     
     def listen_to_new_peer_connections(self):
-        #Lidar com novas tentativas de conexão a esse cliente, análogo ao servidor
+        print("Ouvindo por conexões de peers")
+
+        #Lidar com novas tentativas de conexão a esse cliente, análogo a lógica do servidor
         while True:
             connection, address = self.server_socket.accept()
             data = connection.recv(1024).decode(self.encode_format)
@@ -93,13 +95,13 @@ class Client:
 
     def main(self):
         try:
+            #Thread para conexão com servidor:
             self.connect_to_server()
             self.send_packages(",".join(self.files_list))
 
             #Iniciar thread para ouvir por novas conexões de peer
             threading.Thread(target=self.listen_to_new_peer_connections, args=(), daemon=True).start()
 
-            #Thread Para pedir conexões:
             while True:
                 choice = input(
                     "\nO que deseja fazer?\n"
@@ -123,23 +125,27 @@ class Client:
                     if client_to_connect < 0 or client_to_connect >= len(clients_keys):
                         print("Não existe esse cliente na lista.\nIgnorando solicitação...")
                     else:
+                        
                         client_to_connect = {
                             clients_keys[client_to_connect]:
                                 self.client_table[clients_keys[client_to_connect]]
                         }
-                        print("\nQual arquivo deseja receber?\n")
-                        client_keys = list(client_to_connect.keys())
-                        client_files = client_to_connect[client_keys[0]]
-                        for i, file in enumerate(client_files):
-                            print(f"{i} - {file}")
-                        file_to_receive = int(input())
-                        if file_to_receive < 0 or file_to_receive >= len(client_files):
-                            print("Não existe esse arquivo na lista.\nIgnorando solicitação...")
-                        else:
-                            client_addr = client_keys[0]
-                            file_to_receive = client_files[file_to_receive]
-                            port_to_receive = input("\nEspecifique a porta que deseja receber o arquivo.\n")
-                            self.send_packages(["peer", client_addr, port_to_receive, file_to_receive])
+                        self.client_socket.connect((clients_keys[0][0], clients_keys[0][1]))
+                        # print("\nQual arquivo deseja receber?\n")
+                        # client_keys = list(client_to_connect.keys())
+                        # client_files = client_to_connect[client_keys[0]]
+                        # for i, file in enumerate(client_files):
+                        #     print(f"{i} - {file}")
+                        # file_to_receive = int(input())
+                        # if file_to_receive < 0 or file_to_receive >= len(client_files):
+                        #     print("Não existe esse arquivo na lista.\nIgnorando solicitação...")
+                        # else:
+                        #     client_addr = client_keys[0]
+                        #     file_to_receive = client_files[file_to_receive]
+                        #     port_to_receive = input("\nEspecifique a porta que deseja receber o arquivo.\n")
+                        #     self.send_packages(["peer", client_addr, port_to_receive, file_to_receive])
+            
+            
 
         except Exception as err:
             print(f"A aplicação do cliente foi interrompida: {err}")
