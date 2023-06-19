@@ -2,6 +2,7 @@ import socket
 import sys
 import threading
 import ast
+import re
 
 
 class Client:
@@ -14,6 +15,7 @@ class Client:
         self.files_list = sys.argv[3:] if len(sys.argv) > 2 else []
         self.listen_thread = threading.Thread
         self.client_table = {}
+        self.connections = {}
 
     def listen_to_server(self):
         while True:
@@ -33,6 +35,7 @@ class Client:
                 print("Erro ao lidar com a listen to server")
                 break
 
+
     def connect_to_server(self):
         try:
             self.client_socket.connect((self.server_ip, self.server_port))
@@ -51,11 +54,52 @@ class Client:
 
     def disconnect(self):
         self.client_socket.send(str(["disconnect"]).encode(self.encode_format))
+    
+    def listen_to_new_peer_connections(self):
+        #Lidar com novas tentativas de conexão a esse cliente, análogo ao servidor
+        while True:
+            connection, address = self.server_socket.accept()
+            data = connection.recv(1024).decode(self.encode_format)
+            print(f"Nova conexão: {address[0]}:{address[1]}")
+
+            self.connections.append(connection)
+            threading.Thread(target=self.handle_new_peer, args=(connection, address), daemon=True).start()
+    
+    def handle_new_peer(self, connection, address):
+        while True:
+            try:
+                data = connection.recv(1024).decode(self.encode_format)
+                data = ast.literal_eval(data)
+                if not data:
+                    break
+
+                if data[0] == "disconnect":
+                    self.connections.remove(connection)
+                    connection.send(str(["desconectado"]).encode(self.encode_format))
+                    connection.close()
+                    break
+                elif data[0] == "arquivo":
+                    #Mandar minha lista de arquivos para ser escolhido pelo peer
+                    connection.send(str(["lista", self.files_list]).encode(self.encode_format))
+                elif re.search("[0-9]", data[0]) != None:
+                    chosenFile = data[0]
+                    if chosenFile > 0 and chosenFile < len(self.files_list):
+                        pass
+                        #Aqui fazer lógica para enviar arquivo pedido
+
+            except Exception as err:
+                print(f"Erro ao lidar com o peer")
+                break
 
     def main(self):
         try:
             self.connect_to_server()
             self.send_packages(",".join(self.files_list))
+
+            #Iniciar thread para ouvir por novas conexões de peer
+            threading.Thread(target=self.listen_to_new_peer_connections, args=(), daemon=True).start()
+
+            #Thread Para pedir conexões:
             while True:
                 choice = input(
                     "\nO que deseja fazer?\n"

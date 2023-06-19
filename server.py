@@ -45,15 +45,16 @@ class Server:
                 elif data[0] == "lista":
                     connection.send(str(["lista", client_table]).encode(self.encode_format))
                 elif data[0] == "peer":
-                    client_to_be_server = data[1]
-                    client_to_be_client = connection.getpeername()
-                    port_to_receive = data[2]
-                    file = data[3]
-                    for connection in self.connections:
-                        if connection.getpeername() == client_to_be_server:
-                            client_to_be_server = connection
-                    client_to_be_server.send(str(["peer", client_to_be_client, port_to_receive, file])
-                                             .encode(self.encode_format))
+                    # client_to_be_server = data[1]
+                    # client_to_be_client = connection.getpeername()
+                    # port_to_receive = data[2]
+                    # file = data[3]
+                    # for connection in self.connections:
+                    #     if connection.getpeername() == client_to_be_server:
+                    #         client_to_be_server = connection
+                    # client_to_be_server.send(str(["peer", client_to_be_client, port_to_receive, file])
+                    #                          .encode(self.encode_format))
+                    pass
 
             except Exception as err:
                 print(f"Erro ao lidar com o usuário:{address}")
