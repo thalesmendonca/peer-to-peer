@@ -52,7 +52,7 @@ class Server:
                     for connection in self.connections:
                         if connection.getpeername() == client_to_be_server:
                             client_to_be_server = connection
-                    client_to_be_server.send(str(["peer", client_to_be_client, port_to_receive, file])
+                    client_to_be_server.send(str(["peer", client_to_be_client[0], port_to_receive, file])
                                              .encode(self.encode_format))
 
             except Exception as err:
