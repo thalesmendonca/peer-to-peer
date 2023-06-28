@@ -3,8 +3,8 @@ import socket
 import sys
 import threading
 import ast
-import pyaudio
-from pydub import AudioSegment
+# import pyaudio
+# from pydub import AudioSegment
 
 CHUNK_SIZE = 1024
 SAMPLE_WIDTH = 2
@@ -17,12 +17,26 @@ class Client:
     def __init__(self):
         self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.encode_format = "utf-8"
+        #IP e portas para conectar com servidor
         self.server_ip = sys.argv[1]
         self.server_port = int(sys.argv[2])
-        self.files_list = sys.argv[3:] if len(sys.argv) > 2 else []
+        #IP e portas utilizadas para ouvir as conexões com os peers
+        self.peer_connection_ip = sys.argv[3]
+        self.peer_connection_port = int(sys.argv[4])
+        self.files_list = sys.argv[5:] if len(sys.argv) > 4 else []
         self.listen_thread = threading.Thread
         self.client_table = {}
-        self.audio = pyaudio.PyAudio()
+        # self.audio = pyaudio.PyAudio()
+
+        try:
+
+            self.peer_connection_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.peer_connection_socket.bind((self.peer_connection_ip, self.peer_connection_port))
+
+            print("Configurado para receber conexões de peers")
+        except:
+            print("Falha ao iniciar listening socket...")
+            sys.exit(1)
 
     def listen_to_server(self):
         while True:
@@ -91,17 +105,18 @@ class Client:
 
     def send_file(self, filename, connection):
         try:
-            size = os.path.getsize(filename)
-            print(f"Tamanho total do arquivo: {size}")
-            times = 1
-            extension = filename.rsplit(".", 1)[-1]
-            audio_infos = AudioSegment.from_file(filename, format=extension)
-            raw_data = audio_infos.raw_data
-            for i in range(0, len(raw_data), CHUNK_SIZE):
-                chunk = raw_data[i:i + CHUNK_SIZE]
-                connection.send(chunk)
-                print("{:.2f}% enviado".format((CHUNK_SIZE * times * 100) / size))
-                times = times + 1
+            pass
+            # size = os.path.getsize(filename)
+            # print(f"Tamanho total do arquivo: {size}")
+            # times = 1
+            # extension = filename.rsplit(".", 1)[-1]
+            # audio_infos = AudioSegment.from_file(filename, format=extension)
+            # raw_data = audio_infos.raw_data
+            # for i in range(0, len(raw_data), CHUNK_SIZE):
+            #     chunk = raw_data[i:i + CHUNK_SIZE]
+            #     connection.send(chunk)
+            #     print("{:.2f}% enviado".format((CHUNK_SIZE * times * 100) / size))
+            #     times = times + 1
         except Exception as err:
             print(f"Erro ao enviar arquivo: {err}")
         finally:
@@ -112,7 +127,7 @@ class Client:
     def main(self):
         try:
             self.connect_to_server()
-            self.send_packages(",".join(self.files_list))
+            self.send_packages(str(self.peer_connection_port) + "," + ",".join(self.files_list))
             while True:
                 choice = input(
                     "\nO que deseja fazer?\n"
@@ -159,7 +174,8 @@ class Client:
         except Exception as err:
             print(f"A aplicação do cliente foi interrompida: {err}")
         finally:
-            self.audio.terminate()
+            pass
+            #self.audio.terminate()
 
 
 Client().main()

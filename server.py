@@ -4,6 +4,7 @@ import threading
 import ast
 
 client_table = {}
+client_ip_table = {}
 
 
 class Server:
@@ -69,6 +70,7 @@ class Server:
                 print(f"Cliente já cadastrado: {address[0]}:{address[1]}")
                 connection.close()
                 continue
+
 
             self.connections.append(connection)
             client_table[address] = data.split(",")
