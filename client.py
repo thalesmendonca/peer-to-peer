@@ -5,6 +5,7 @@ import threading
 import ast
 # import pyaudio
 # from pydub import AudioSegment
+import select
 
 CHUNK_SIZE = 1024
 SAMPLE_WIDTH = 2
@@ -16,6 +17,8 @@ class Client:
 
     def __init__(self):
         self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        #Socket utilizada para conectar com peer
+        self.file_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.encode_format = "utf-8"
         #IP e portas para conectar com servidor
         self.server_ip = sys.argv[1]
@@ -29,9 +32,12 @@ class Client:
         # self.audio = pyaudio.PyAudio()
 
         try:
-
+            #Setando para receber conexões de peers
             self.peer_connection_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            # Configuração para modo não bloqueante
+            self.peer_connection_socket.setblocking(0)
             self.peer_connection_socket.bind((self.peer_connection_ip, self.peer_connection_port))
+            self.peer_connection_socket.listen(1)
 
             print("Configurado para receber conexões de peers")
         except:
@@ -121,6 +127,11 @@ class Client:
             print(f"Erro ao enviar arquivo: {err}")
         finally:
             connection.close()
+    
+    #Função para lidar com conexão de novos peers
+    def handle_peer(self, connection, address):
+        print("Conectado com " + str(address))
+        pass
 
 
 
@@ -142,6 +153,36 @@ class Client:
                 elif choice == "2":
                     self.send_packages(["lista"])
                 elif choice == "3":
+                    clients_keys = list(self.client_table.keys())
+                    print(f"{0} - nenhum")
+                    for i, cliente in enumerate(self.client_table.keys()):
+                        if cliente == self.client_socket.getsockname(): continue
+                        print(f"{i+1} - {cliente}")
+                    
+                    peer_to_connect = int(input("Qual peer você deseja se conectar? ")) - 1
+
+                    if peer_to_connect < 0 or peer_to_connect >= (len(clients_keys)):
+                        print("Não existe esse cliente na lista.\nIgnorando solicitação...")
+                    else:
+                        peer_addr = clients_keys[peer_to_connect]
+                        chosen_user = self.client_table[peer_addr]
+                        print("Conectando com " + str(peer_to_connect) + "...")
+                        peer_ip = peer_addr[0]
+                        peer_port = int(chosen_user[0])
+
+                        #Criar nova socket para se conectar ao peer
+                        self.file_socket.connect((peer_ip, peer_port))
+
+                        #Pedir e receber arquivo
+
+
+                        
+
+                        
+                        
+                        
+
+                elif choice == "0":
                     print("\nDeseja solicitar um arquivo a qual cliente?\n")
                     clients_keys = list(self.client_table.keys())
                     for i, cliente in enumerate(self.client_table.keys()):
@@ -170,6 +211,15 @@ class Client:
                             port_to_receive = input("\nEspecifique a porta que deseja receber o arquivo.\n")
                             self.send_packages(["peer", client_addr, port_to_receive, file_to_receive])
                             self.open_server_to_receive_file(port_to_receive)
+                
+                #Como é utilizado a configuração não bloqueante, 
+                # é necessário fazer desse modo para verificar se há uma nova conexão de peer
+                available_socket, _, _ = select.select([self.peer_connection_socket], [], [], 0.5)
+
+                for socket in available_socket:
+                    new_peer_connection, new_peer_address = socket.accept()
+                    threading.Thread(target=self.handle_peer, args=(new_peer_connection, new_peer_address), daemon=True).start()
+                    print(f"Conectando com novo peer... {new_peer_address}")
 
         except Exception as err:
             print(f"A aplicação do cliente foi interrompida: {err}")
