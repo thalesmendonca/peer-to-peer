@@ -5,6 +5,7 @@ import threading
 import ast
 import pyaudio
 from pydub import AudioSegment
+import select
 
 CHUNK_SIZE = 1024
 SAMPLE_WIDTH = 2
@@ -16,13 +17,32 @@ class Client:
 
     def __init__(self):
         self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        #Socket utilizada para conectar com peer
+        self.file_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.encode_format = "utf-8"
+        #IP e portas para conectar com servidor
         self.server_ip = sys.argv[1]
         self.server_port = int(sys.argv[2])
-        self.files_list = sys.argv[3:] if len(sys.argv) > 2 else []
+        #IP e portas utilizadas para ouvir as conexões com os peers
+        self.peer_connection_ip = sys.argv[3]
+        self.peer_connection_port = int(sys.argv[4])
+        self.files_list = sys.argv[5:] if len(sys.argv) > 4 else []
         self.listen_thread = threading.Thread
         self.client_table = {}
-        self.audio = pyaudio.PyAudio()
+        # self.audio = pyaudio.PyAudio()
+
+        try:
+            #Setando para receber conexões de peers
+            self.peer_connection_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            # Configuração para modo não bloqueante
+            self.peer_connection_socket.setblocking(0)
+            self.peer_connection_socket.bind((self.peer_connection_ip, self.peer_connection_port))
+            self.peer_connection_socket.listen(1)
+
+            print("Configurado para receber conexões de peers")
+        except:
+            print("Falha ao iniciar listening socket...")
+            sys.exit(1)
 
     def listen_to_server(self):
         while True:
@@ -35,10 +55,6 @@ class Client:
                 if data[0] == "lista":
                     self.client_table = data[1]
                     print(f"Nova tabela de clientes: {self.client_table}")
-                elif data[0] == "peer":
-                    client_socket_to_send_file = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                    client_socket_to_send_file.connect((data[1], int(data[2])))
-                    self.send_file(data[3], client_socket_to_send_file)
 
             except Exception as err:
                 print(f"Erro ao lidar com a listen to server: {err}")
@@ -63,31 +79,32 @@ class Client:
     def disconnect(self):
         self.client_socket.send(str(["disconnect"]).encode(self.encode_format))
 
-    def open_server_to_receive_file(self, port):
+    #Essa função não está mais sendo usada, por que a lógica foi passada para dentro do "elif choice == 3"
+    # def open_server_to_receive_file(self, port):
 
-        stream = self.audio.open(format=self.audio.get_format_from_width(SAMPLE_WIDTH),
-                                 channels=CHANNELS,
-                                 rate=SAMPLE_RATE,
-                                 output=True)
-        client_socket_to_receive_file = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        client_socket_to_receive_file.bind((self.client_socket.getsockname()[0], int(port)))
-        client_socket_to_receive_file.listen(1)
+    #     stream = self.audio.open(format=self.audio.get_format_from_width(SAMPLE_WIDTH),
+    #                              channels=CHANNELS,
+    #                              rate=SAMPLE_RATE,
+    #                              output=True)
+    #     client_socket_to_receive_file = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    #     client_socket_to_receive_file.bind((self.client_socket.getsockname()[0], int(port)))
+    #     client_socket_to_receive_file.listen(1)
 
-        remetente, address = client_socket_to_receive_file.accept()
-        try:
-            while True:
-                data = remetente.recv(CHUNK_SIZE)
-                if not data:
-                    break
+    #     remetente, address = client_socket_to_receive_file.accept()
+    #     try:
+    #         while True:
+    #             data = remetente.recv(CHUNK_SIZE)
+    #             if not data:
+    #                 break
 
-                stream.write(data)
-        except Exception as err:
-            print(f"Erro ao lidar com recebimento de arquivo: {str(err)}")
+    #             stream.write(data)
+    #     except Exception as err:
+    #         print(f"Erro ao lidar com recebimento de arquivo: {str(err)}")
 
-        finally:
-            remetente.close()
-            stream.stop_stream()
-            stream.close()
+    #     finally:
+    #         remetente.close()
+    #         stream.stop_stream()
+    #         stream.close()
 
     def send_file(self, filename, connection):
         try:
@@ -106,13 +123,32 @@ class Client:
             print(f"Erro ao enviar arquivo: {err}")
         finally:
             connection.close()
+    
+    #Função para lidar com conexão de novos peers
+    def handle_peer(self, connection, address):
+        print("Conectado com " + str(address))
 
+        #Primeiro será recebido a porta que deverá ser mandada
+        data = connection.recv(1024).decode(self.encode_format)
+        port_to_send_file = int(ast.literal_eval(data))
 
+        #Depois será recebido o arquivo que está sendo requisitado
+        data = connection.recv(1024).decode(self.encode_format)
+        file_chosen = self.files_list[int(ast.literal_eval(data))]
 
+        print("Arquivo escolhido: " + str(file_chosen))
+
+        #Conectar com socket que está esperando o arquivo, depois enviar o arquivo
+        #TESTAR A PARTIR DESSA PARTE
+        send_file_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        send_file_socket.connect((address, port_to_send_file))
+        #A conexão provavelmente está OK, o que precisa ser testado é a função send_file
+        self.send_file(data[3], send_file_socket)
+        
     def main(self):
         try:
             self.connect_to_server()
-            self.send_packages(",".join(self.files_list))
+            self.send_packages(str(self.peer_connection_port) + "," + ",".join(self.files_list))
             while True:
                 choice = input(
                     "\nO que deseja fazer?\n"
@@ -127,39 +163,120 @@ class Client:
                 elif choice == "2":
                     self.send_packages(["lista"])
                 elif choice == "3":
-                    print("\nDeseja solicitar um arquivo a qual cliente?\n")
                     clients_keys = list(self.client_table.keys())
+                    print(f"{0} - nenhum")
                     for i, cliente in enumerate(self.client_table.keys()):
                         if cliente == self.client_socket.getsockname(): continue
-                        print(f"{i} - {cliente}")
+                        print(f"{i+1} - {cliente}")
+                    
+                    peer_to_connect = int(input("Qual peer você deseja se conectar? ")) - 1
 
-                    client_to_connect = int(input())
-                    if client_to_connect < 0 or client_to_connect >= (len(clients_keys)-1):
+                    if peer_to_connect == 0:
+                        print("Ok, voltando")
+                    elif peer_to_connect < 0 or peer_to_connect >= (len(clients_keys)):
                         print("Não existe esse cliente na lista.\nIgnorando solicitação...")
                     else:
-                        client_to_connect = {
-                            clients_keys[client_to_connect]:
-                                self.client_table[clients_keys[client_to_connect]]
-                        }
-                        print("\nQual arquivo deseja receber?\n")
-                        client_keys = list(client_to_connect.keys())
-                        client_files = client_to_connect[client_keys[0]]
-                        for i, file in enumerate(client_files):
-                            print(f"{i} - {file}")
-                        file_to_receive = int(input())
-                        if file_to_receive < 0 or file_to_receive >= len(client_files):
-                            print("Não existe esse arquivo na lista.\nIgnorando solicitação...")
-                        else:
-                            client_addr = client_keys[0]
-                            file_to_receive = client_files[file_to_receive]
-                            port_to_receive = input("\nEspecifique a porta que deseja receber o arquivo.\n")
-                            self.send_packages(["peer", client_addr, port_to_receive, file_to_receive])
-                            self.open_server_to_receive_file(port_to_receive)
+                        peer_addr = clients_keys[peer_to_connect]
+                        chosen_user = self.client_table[peer_addr]
+
+                        print("Conectando com " + str(peer_to_connect) + "...")
+                        peer_ip = peer_addr[0]
+                        peer_port = int(chosen_user[0])
+
+                        #conectar ao peer
+                        self.file_socket.connect((peer_ip, peer_port))
+                        
+                        #Abrindo para receber resposta
+                        port_to_receive = int(input("\nEspecifique a porta que deseja receber o arquivo.\n"))
+
+                        #Pedir arquivo
+                        peer_files = chosen_user[1:] #Primeira posição é numero da porta
+                        for i in range(len(peer_files)):
+                            print(f"{i} - {peer_files[i]}")
+                        chosen_file = int(input("Qual arquivo você deseja pedir? ")) - 1
+
+                        #Mandar primeiro porta a ser recebida
+                        port_package = str(port_to_receive).encode(self.encode_format)
+                        self.file_socket.send(port_package)
+
+                        #Mandar arquivo requisitado
+                        file_package = str(chosen_file).encode(self.encode_format)
+                        self.file_socket.send(file_package)
+
+                        #TESTAR A PARTIR DESSA PARTE
+
+                        #configuração para receber arquivo
+                        stream = self.audio.open(format=self.audio.get_format_from_width(SAMPLE_WIDTH),
+                                 channels=CHANNELS,
+                                 rate=SAMPLE_RATE,
+                                 output=True)
+                        
+                        client_socket_to_receive_file = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                        client_socket_to_receive_file.bind((self.client_socket.getsockname()[0], int(port_to_receive)))
+                        client_socket_to_receive_file.listen(1)
+
+                        remetente, address = client_socket_to_receive_file.accept()
+                        try:
+                            while True:
+                                data = remetente.recv(CHUNK_SIZE)
+                                if not data:
+                                    break
+
+                                stream.write(data)
+                        except Exception as err:
+                            print(f"Erro ao lidar com recebimento de arquivo: {str(err)}")
+
+                        finally:
+                            remetente.close()
+                            stream.stop_stream()
+                            stream.close()
+       
+                #JEITO ANTIGO
+                # elif choice == "0":
+                #     print("\nDeseja solicitar um arquivo a qual cliente?\n")
+                #     clients_keys = list(self.client_table.keys())
+                #     for i, cliente in enumerate(self.client_table.keys()):
+                #         if cliente == self.client_socket.getsockname(): continue
+                #         print(f"{i} - {cliente}")
+
+                #     client_to_connect = int(input())
+                #     if client_to_connect < 0 or client_to_connect >= (len(clients_keys)-1):
+                #         print("Não existe esse cliente na lista.\nIgnorando solicitação...")
+                #     else:
+                #         client_to_connect = {
+                #             clients_keys[client_to_connect]:
+                #                 self.client_table[clients_keys[client_to_connect]]
+                #         }
+                #         print("\nQual arquivo deseja receber?\n")
+                #         client_keys = list(client_to_connect.keys())
+                #         client_files = client_to_connect[client_keys[0]]
+                #         for i, file in enumerate(client_files):
+                #             print(f"{i} - {file}")
+                #         file_to_receive = int(input())
+                #         if file_to_receive < 0 or file_to_receive >= len(client_files):
+                #             print("Não existe esse arquivo na lista.\nIgnorando solicitação...")
+                #         else:
+                #             client_addr = client_keys[0]
+                #             file_to_receive = client_files[file_to_receive]
+                #             port_to_receive = input("\nEspecifique a porta que deseja receber o arquivo.\n")
+                #             self.send_packages(["peer", client_addr, port_to_receive, file_to_receive])
+                #             self.open_server_to_receive_file(port_to_receive)
+                
+
+                #Como é utilizado a configuração não bloqueante, 
+                # é necessário fazer desse modo para verificar se há uma nova conexão de peer
+                available_socket, _, _ = select.select([self.peer_connection_socket], [], [], 0.5)
+
+                for socket in available_socket:
+                    new_peer_connection, new_peer_address = socket.accept()
+                    threading.Thread(target=self.handle_peer, args=(new_peer_connection, new_peer_address), daemon=True).start()
+                    print(f"Conectando com novo peer... {new_peer_address}")
 
         except Exception as err:
             print(f"A aplicação do cliente foi interrompida: {err}")
         finally:
-            self.audio.terminate()
+            pass
+            #self.audio.terminate()
 
 
 Client().main()
