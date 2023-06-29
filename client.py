@@ -1,16 +1,18 @@
 import os.path
 import socket
 import sys
-import threading
+import threading, queue, time
 import ast
 import pyaudio
 from pydub import AudioSegment
-import select
 
 CHUNK_SIZE = 1024
 SAMPLE_WIDTH = 2
 CHANNELS = 2
 SAMPLE_RATE = 44100
+BUFF_SIZE = 65536
+
+stop_event = threading.Event()
 
 
 class Client:
@@ -28,6 +30,7 @@ class Client:
         self.listen_thread = threading.Thread
         self.client_table = {}
         self.audio = pyaudio.PyAudio()
+        self.queue = queue.Queue(maxsize=2000)
 
         try:
             #Setando para receber conexões de peers
@@ -75,23 +78,21 @@ class Client:
     def disconnect(self):
         self.client_socket.send(str(["disconnect"]).encode(self.encode_format))
 
-    def send_file(self, filename, connection):
+    def send_file(self, filename, ip_to_send, port_to_send):
+        send_file_socket_udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         try:
-            size = os.path.getsize(filename)
-            print(f"Tamanho total do arquivo: {size}")
-            times = 1
             extension = filename.rsplit(".", 1)[-1]
             audio_infos = AudioSegment.from_file(filename, format=extension)
             raw_data = audio_infos.raw_data
-            for i in range(0, len(raw_data), CHUNK_SIZE):
-                chunk = raw_data[i:i + CHUNK_SIZE]
-                connection.send(chunk)
-                print("{:.2f}% enviado".format((CHUNK_SIZE * times * 100) / size))
-                times = times + 1
+            for i in range(0, len(raw_data), CHUNK_SIZE*10):
+                chunk = raw_data[i:i + CHUNK_SIZE*10]
+                send_file_socket_udp.sendto(chunk, (ip_to_send, port_to_send))
+                time.sleep((CHUNK_SIZE*2)/SAMPLE_RATE)
+            send_file_socket_udp.sendto("fim".encode(self.encode_format), (ip_to_send, port_to_send))
         except Exception as err:
             print(f"Erro ao enviar arquivo: {err}")
         finally:
-            connection.close()
+            send_file_socket_udp.close()
     
     #Função para lidar com conexão de novos peers
     def handle_peer(self, connection, address):
@@ -100,6 +101,7 @@ class Client:
         #Primeiro será recebido a porta que deverá ser mandada
         data = connection.recv(1024).decode(self.encode_format)
         port_to_send_file = int(ast.literal_eval(data))
+        ip_to_send_file = address[0]
 
         #Depois será recebido o arquivo que está sendo requisitado
         data = connection.recv(1024).decode(self.encode_format)
@@ -107,12 +109,8 @@ class Client:
 
         print("Arquivo escolhido: " + str(file_chosen))
 
-        #Conectar com socket que está esperando o arquivo, depois enviar o arquivo
-        #TESTAR A PARTIR DESSA PARTE
-        send_file_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        send_file_socket.connect((address[0], port_to_send_file))
         #A conexão provavelmente está OK, o que precisa ser testado é a função send_file
-        self.send_file(file_chosen, send_file_socket)
+        self.send_file(file_chosen, ip_to_send_file, port_to_send_file)
         connection.close()
 
     def receive_connections(self):
@@ -122,9 +120,18 @@ class Client:
             new_peer_connection, new_peer_address = self.peer_connection_socket.accept()
             threading.Thread(target=self.handle_peer, args=(new_peer_connection, new_peer_address), daemon=True).start()
             print(f"Conectando com novo peer... {new_peer_address}")
-        
+
+    def get_audio_data(self):
+        try:
+            while True:
+                frame, _ = client_socket_to_receive_file.recvfrom(BUFF_SIZE)
+                self.queue.put(frame)
+        except Exception:
+            pass
+
     def main(self):
         global socket
+        global client_socket_to_receive_file
         try:
             self.connect_to_server()
             self.send_packages(str(self.peer_connection_port) + "," + ",".join(self.files_list))
@@ -184,31 +191,26 @@ class Client:
                         file_package = str(chosen_file).encode(self.encode_format)
                         file_socket.send(file_package)
                         file_socket.close()
-                        #TESTAR A PARTIR DESSA PARTE
 
                         #configuração para receber arquivo
                         stream = self.audio.open(format=self.audio.get_format_from_width(SAMPLE_WIDTH),
                                  channels=CHANNELS,
                                  rate=SAMPLE_RATE,
-                                 output=True)
+                                 output=True,
+                                frames_per_buffer=CHUNK_SIZE)
                         
-                        client_socket_to_receive_file = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                        client_socket_to_receive_file = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                         client_socket_to_receive_file.bind((self.client_socket.getsockname()[0], int(port_to_receive)))
-                        client_socket_to_receive_file.listen(1)
-
-                        remetente, address = client_socket_to_receive_file.accept()
+                        thread_receive_audio = threading.Thread(target=self.get_audio_data, args=(), daemon=True).start()
+                        time.sleep(2)
                         try:
                             while True:
-                                data = remetente.recv(CHUNK_SIZE)
-                                if not data:
-                                    break
-
+                                if self.queue.empty(): break
+                                data = self.queue.get()
                                 stream.write(data)
                         except Exception as err:
                             print(f"Erro ao lidar com recebimento de arquivo: {str(err)}")
-
                         finally:
-                            remetente.close()
                             client_socket_to_receive_file.close()
                             stream.stop_stream()
                             stream.close()
