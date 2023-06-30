@@ -24,10 +24,10 @@ class Client:
         self.server_ip = sys.argv[1]
         self.server_port = int(sys.argv[2])
         #IP e portas utilizadas para ouvir as conexões com os peers
-        self.peer_connection_ip = sys.argv[3]
-        self.peer_connection_port = int(sys.argv[4])
+        self.ip_to_accept_peer_connections = sys.argv[3]
+        self.port_to_accept_peer_connection = int(sys.argv[4])
         self.files_list = sys.argv[5:] if len(sys.argv) > 4 else []
-        self.listen_thread = threading.Thread
+        self.listen_to_server_thread = threading.Thread
         self.client_table = {}
         self.audio = pyaudio.PyAudio()
         self.queue = queue.Queue(maxsize=2000)
@@ -35,7 +35,7 @@ class Client:
         try:
             #Setando para receber conexões de peers
             self.peer_connection_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.peer_connection_socket.bind((self.peer_connection_ip, self.peer_connection_port))
+            self.peer_connection_socket.bind((self.ip_to_accept_peer_connections, self.port_to_accept_peer_connection))
             self.peer_connection_socket.listen(1)
 
             print("Configurado para receber conexões de peers")
@@ -44,6 +44,7 @@ class Client:
             sys.exit(1)
 
     def listen_to_server(self):
+        """'Função que fica recebendo dados do servidor'"""
         while True:
             try:
                 data = self.client_socket.recv(1024).decode(self.encode_format)
@@ -62,7 +63,7 @@ class Client:
     def connect_to_server(self):
         try:
             self.client_socket.connect((self.server_ip, self.server_port))
-            self.listen_thread(target=self.listen_to_server, daemon=True).start()
+            self.listen_to_server_thread(target=self.listen_to_server, daemon=True).start()
             print("Conectado ao servidor...")
 
         except:
@@ -77,25 +78,10 @@ class Client:
 
     def disconnect(self):
         self.client_socket.send(str(["disconnect"]).encode(self.encode_format))
-
-    def send_file(self, filename, ip_to_send, port_to_send):
-        send_file_socket_udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        try:
-            extension = filename.rsplit(".", 1)[-1]
-            audio_infos = AudioSegment.from_file(filename, format=extension)
-            raw_data = audio_infos.raw_data
-            for i in range(0, len(raw_data), CHUNK_SIZE*10):
-                chunk = raw_data[i:i + CHUNK_SIZE*10]
-                send_file_socket_udp.sendto(chunk, (ip_to_send, port_to_send))
-                time.sleep((CHUNK_SIZE*2)/SAMPLE_RATE)
-            send_file_socket_udp.sendto("fim".encode(self.encode_format), (ip_to_send, port_to_send))
-        except Exception as err:
-            print(f"Erro ao enviar arquivo: {err}")
-        finally:
-            send_file_socket_udp.close()
     
     #Função para lidar com conexão de novos peers
     def handle_peer(self, connection, address):
+        """'Função para lidar com conexão de novos peers'"""
         print("Conectado com " + str(address))
 
         #Primeiro será recebido a porta que deverá ser mandada
@@ -113,15 +99,32 @@ class Client:
         self.send_file(file_chosen, ip_to_send_file, port_to_send_file)
         connection.close()
 
+    def send_file(self, filename, ip_to_send, port_to_send):
+        """'Função para envio do arquivo'"""
+        send_file_socket_udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            extension = filename.rsplit(".", 1)[-1]
+            audio_infos = AudioSegment.from_file(filename, format=extension)
+            raw_data = audio_infos.raw_data
+            for i in range(0, len(raw_data), CHUNK_SIZE*10):
+                chunk = raw_data[i:i + CHUNK_SIZE*10]
+                send_file_socket_udp.sendto(chunk, (ip_to_send, port_to_send))
+                time.sleep((CHUNK_SIZE*2)/SAMPLE_RATE)
+            send_file_socket_udp.sendto("fim".encode(self.encode_format), (ip_to_send, port_to_send))
+        except Exception as err:
+            print(f"Erro ao enviar arquivo: {err}")
+        finally:
+            send_file_socket_udp.close()
+
     def receive_connections(self):
-        # Como é utilizado a configuração não bloqueante,
-        # é necessário fazer desse modo para verificar se há uma nova conexão de peer
+        """'Função para receber conexão tcp de outros clientes.'"""
         while True:
             new_peer_connection, new_peer_address = self.peer_connection_socket.accept()
             threading.Thread(target=self.handle_peer, args=(new_peer_connection, new_peer_address), daemon=True).start()
             print(f"Conectando com novo peer... {new_peer_address}")
 
     def get_audio_data(self):
+        """'Função que recebes dados e coloca na queue.'"""
         try:
             while True:
                 frame, _ = client_socket_to_receive_file.recvfrom(BUFF_SIZE)
@@ -134,7 +137,7 @@ class Client:
         global client_socket_to_receive_file
         try:
             self.connect_to_server()
-            self.send_packages(str(self.peer_connection_port) + "," + ",".join(self.files_list))
+            self.send_packages(str(self.port_to_accept_peer_connection) + "," + ",".join(self.files_list))
             threading.Thread(target=self.receive_connections, args=(), daemon=True).start()
             while True:
                 choice = input(
@@ -201,7 +204,7 @@ class Client:
                         
                         client_socket_to_receive_file = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                         client_socket_to_receive_file.bind((self.client_socket.getsockname()[0], int(port_to_receive)))
-                        thread_receive_audio = threading.Thread(target=self.get_audio_data, args=(), daemon=True).start()
+                        threading.Thread(target=self.get_audio_data, args=(), daemon=True).start()
                         time.sleep(2)
                         try:
                             while True:
